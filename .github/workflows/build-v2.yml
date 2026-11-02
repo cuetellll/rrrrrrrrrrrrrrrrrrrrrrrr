@@ -4,7 +4,7 @@ on:
   push:
     tags: ['v*']
 permissions:
-  contents: read
+  contents: write
 jobs:
   windows:
     runs-on: windows-latest
@@ -29,17 +29,41 @@ jobs:
         run: npm install --no-package-lock
       - name: Build Windows installer and portable ZIP
         run: npm run dist
-      - name: Hash distributables
+      - name: Verify both distributables exist
         shell: pwsh
         run: |
-          $items = @(Get-ChildItem dist -File | Where-Object { $_.Name -match '\.(exe|zip)$' })
-          if ($items.Count -lt 2) { throw "Expected installer and portable archive" }
-          $items | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+          $exe = Get-ChildItem dist -File -Filter '*.exe' | Select-Object -First 1
+          $zip = Get-ChildItem dist -File -Filter '*.zip' | Select-Object -First 1
+          if (-not $exe) { throw "Installer (.exe) was not produced" }
+          if (-not $zip) { throw "Portable archive (.zip) was not produced" }
+          $exe | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content -Encoding ascii dist/SHA256SUMS.exe.txt
+          $zip | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content -Encoding ascii dist/SHA256SUMS.zip.txt
+
+      # â”€â”€ Setup (Ù†ØµØ¨ÛŒ) â€” Ø¢Ø±ØªÛŒÙÚ©Øª Ú©Ø§Ù…Ù„Ø§Ù‹ Ø¬Ø¯Ø§Ú¯Ø§Ù†Ù‡ â”€â”€
       - uses: actions/upload-artifact@v4
         with:
-          name: Mahyar-VPN-windows-x64
+          name: Mahyar-VPN-Setup-x64
           path: |
             dist/*.exe
-            dist/*.zip
-            dist/SHA256SUMS.txt
+            dist/SHA256SUMS.exe.txt
           if-no-files-found: error
+
+      # â”€â”€ Portable (Ø¨Ø¯ÙˆÙ† Ù†ØµØ¨) â€” Ø¢Ø±ØªÛŒÙÚ©Øª Ú©Ø§Ù…Ù„Ø§Ù‹ Ø¬Ø¯Ø§Ú¯Ø§Ù†Ù‡ â”€â”€
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mahyar-VPN-Portable-x64
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.zip.txt
+          if-no-files-found: error
+
+      # â”€â”€ Ø§Ù†ØªØ´Ø§Ø± ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ø®Ø§Ù… (Ø¨Ø¯ÙˆÙ† Ø²ÛŒÙ¾ Ø§Ø¶Ø§ÙÙ‡) Ø±ÙˆÛŒ GitHub Releases â”€â”€
+      - name: Publish raw files to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$env:GITHUB_REF_NAME" --title "Mahyar VPN $env:GITHUB_REF_NAME" --generate-notes `
+            (Get-ChildItem dist -File | Where-Object { $_.Name -match '\.(exe|zip)$' } | ForEach-Object FullName) `
+            dist/SHA256SUMS.exe.txt dist/SHA256SUMS.zip.txt
