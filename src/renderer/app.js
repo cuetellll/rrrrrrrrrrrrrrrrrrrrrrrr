@@ -1,314 +1,401 @@
+/* MAHYAR VPN — application controller.
+ * State machine: idle → connecting → connected → disconnecting → idle
+ * Persistence (this device only, localStorage):
+ *   mahyar.settings.v1  — preferences
+ *   mahyar.server.v1    — selected server id
+ *   mahyar.favs.v1      — favourite server ids
+ *   mahyar.history.v1   — connection sessions (max 100)
+ */
 'use strict';
 
-/* Mahyar VPN renderer — the state machine of one screen.
- *
- * The order is not cosmetic: the config cannot carry a byte until the certificate it
- * terminates TLS with is one this machine trusts, so the power button stays disabled and
- * the status line says which step is next until the setup is done. */
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const B = window.MVBridge;
+  const SERVERS = window.MV_SERVERS.map((s) => ({ ...s }));
+  const FLAG = window.MV_FLAG;
 
-const $ = (id) => document.getElementById(id);
+  // ---------- storage helpers (never clears existing keys) ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* quota / private mode */ } },
+  };
+  const K = { settings: 'mahyar.settings.v1', server: 'mahyar.server.v1', favs: 'mahyar.favs.v1', history: 'mahyar.history.v1' };
 
-const state = {
-    mitm: null,
-    engine: null,
-    busy: null,
-    traffic: null,
-    lastPushAt: 0,
-};
+  const DEFAULTS = {
+    launchOnStartup: true, startMinimized: false, closeToTray: true,
+    autoConnect: false, killSwitch: true, autoReconnect: true, protocol: 'Auto',
+    glow: 'vivid', motion: 'full', grain: true, particles: true,
+    notifications: true, sounds: false, units: 'Mbps',
+  };
+  const settings = Object.assign({}, DEFAULTS, store.get(K.settings, {}));
+  let favs = store.get(K.favs, []);
+  let history = store.get(K.history, []);
 
-const fa = (n) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[d]);
+  const state = {
+    phase: 'idle',             // idle | connecting | connected | disconnecting
+    server: SERVERS.find((s) => s.id === store.get(K.server, 'auto')) || SERVERS[0],
+    resolved: null,            // concrete server when "Smart Location" chosen
+    since: 0,
+    realIp: null, vpnIp: null,
+    traffic: { downSpeed: 0, upSpeed: 0, down: 0, up: 0 },
+    dlHist: [], ulHist: [],
+    sort: 'recommended', query: '',
+  };
 
-function fmtBytes(b) {
+  // ---------- formatting ----------
+  function fmtBytes(b) {
     b = Number(b) || 0;
-    if (b >= 1024 ** 3) return fa((b / 1024 ** 3).toFixed(2)) + ' GB';
-    if (b >= 1024 ** 2) return fa((b / 1024 ** 2).toFixed(1)) + ' MB';
-    if (b >= 1024) return fa((b / 1024).toFixed(1)) + ' KB';
-    return fa(b) + ' B';
-}
+    if (b >= 1024 ** 3) return (b / 1024 ** 3).toFixed(2) + ' GB';
+    if (b >= 1024 ** 2) return (b / 1024 ** 2).toFixed(1) + ' MB';
+    if (b >= 1024) return (b / 1024).toFixed(1) + ' KB';
+    return Math.round(b) + ' B';
+  }
+  function speed(bps) { // bytes/s -> [value, unit]
+    return settings.units === 'MB/s' ? [(bps / 1048576).toFixed(2), 'MB/s'] : [(bps * 8 / 1e6).toFixed(1), 'Mbps'];
+  }
+  function clock(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map((n) => String(n).padStart(2, '0')).join(':');
+  }
+  function human(ms) {
+    const m = Math.round(ms / 60000);
+    if (m < 60) return m + 'm';
+    return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+  }
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const label = (s) => s.smart ? s.country : `${s.country} · ${s.city}`;
 
-function fmtSpeed(b) {
-    b = Number(b) || 0;
-    if (b >= 1024 ** 2) return fa((b / 1024 ** 2).toFixed(1)) + ' <small>MB/s</small>';
-    if (b >= 1024) return fa((b / 1024).toFixed(0)) + ' <small>KB/s</small>';
-    return fa(b) + ' <small>B/s</small>';
-}
-
-function fmtUptime(ms) {
-    const s = Math.floor((ms || 0) / 1000);
-    const h = String(Math.floor(s / 3600)).padStart(2, '0');
-    const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-    const sec = String(s % 60).padStart(2, '0');
-    return fa(`${h}:${m}:${sec}`);
-}
-
-let toastTimer = null;
-function toast(msg, isErr) {
+  // ---------- toast / sound ----------
+  let toastT;
+  function toast(msg, kind) {
     const t = $('toast');
-    t.textContent = msg;
-    t.classList.toggle('err', !!isErr);
-    t.classList.remove('hidden');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.add('hidden'), 4200);
-}
+    t.textContent = msg; t.className = 'toast show' + (kind ? ' ' + kind : '');
+    clearTimeout(toastT); toastT = setTimeout(() => { t.className = 'toast'; }, 3200);
+  }
+  let actx;
+  function tone(up) {
+    if (!settings.sounds) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(up ? 520 : 660, actx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(up ? 880 : 330, actx.currentTime + .25);
+      g.gain.setValueAtTime(.0001, actx.currentTime); g.gain.exponentialRampToValueAtTime(.08, actx.currentTime + .03);
+      g.gain.exponentialRampToValueAtTime(.0001, actx.currentTime + .4);
+      o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + .42);
+    } catch (e) { /* audio unavailable */ }
+  }
 
-function setBusy(kind) {
-    state.busy = kind;
-    document.querySelectorAll('[data-act]').forEach((b) => {
-        b.disabled = !!kind && b.dataset.act !== kind;
-    });
-    render();
-}
+  // ---------- navigation ----------
+  function go(name) {
+    document.querySelectorAll('.rail-btn').forEach((b) => b.classList.toggle('active', b.dataset.screen === name));
+    document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.dataset.screen === name));
+    if (name === 'stats') requestAnimationFrame(renderStats);
+    if (name === 'servers') renderServers();
+  }
+  document.querySelectorAll('.rail-btn').forEach((b) => b.addEventListener('click', () => go(b.dataset.screen)));
 
-function clearBusy() { state.busy = null; render(); }
+  // ---------- connection ----------
+  function pickSmart() {
+    return SERVERS.filter((s) => !s.smart && s.status === 'online')
+      .sort((a, b) => (a.latency + a.load * .8) - (b.latency + b.load * .8))[0];
+  }
 
-function ready() {
-    return !!(state.mitm && state.mitm.exists && state.mitm.trusted && state.mitm.coreReady !== false);
-}
+  async function connect() {
+    if (state.phase !== 'idle') return;
+    const target = state.server.smart ? pickSmart() : state.server;
+    if (!target || target.status === 'offline') { toast('This server is offline — choose another location', 'err'); return; }
+    state.resolved = target;
+    setPhase('connecting');
+    try {
+      const r = await B.connect(target, settings.protocol);
+      if (state.phase !== 'connecting') return;
+      state.vpnIp = r.ip || null;
+      state.since = Date.now();
+      state.traffic = { downSpeed: 0, upSpeed: 0, down: 0, up: 0 };
+      state.dlHist = []; state.ulHist = [];
+      setPhase('connected');
+      tone(true);
+      if (settings.notifications) toast(`Connected to ${label(target)}`, 'ok');
+      if (B.mode === 'native') B.publicIp().then((ip) => { state.vpnIp = ip; renderHome(); });
+    } catch (e) {
+      setPhase('idle');
+      toast('Connection failed: ' + e.message, 'err');
+    }
+  }
 
-function render() {
-    const m = state.mitm || { exists: false, trusted: false, cert: null };
-    const on = !!(state.engine && state.engine.running);
+  async function disconnect() {
+    if (state.phase !== 'connected') return;
+    const session = {
+      id: Date.now(), server: state.resolved.id, start: state.since, end: Date.now(),
+      down: state.traffic.down, up: state.traffic.up, protocol: settings.protocol,
+    };
+    setPhase('disconnecting');
+    try { await B.disconnect(); } catch (e) { toast(e.message, 'err'); }
+    history.unshift(session); history = history.slice(0, 100); store.set(K.history, history);
+    state.vpnIp = null;
+    state.traffic = { downSpeed: 0, upSpeed: 0, down: 0, up: 0 };
+    setPhase('idle');
+    tone(false);
+    if (settings.notifications) toast('Disconnected · session saved');
+  }
 
-    const hero = document.querySelector('.hero');
-    hero.classList.toggle('on', on);
-    hero.classList.toggle('is-busy', !!state.busy);
-    const head = $('st-head'), sub = $('st-sub'), power = $('btn-power');
+  function setPhase(p) {
+    state.phase = p;
+    document.body.classList.toggle('is-connected', p === 'connected');
+    $('orb-stage').dataset.state = p === 'idle' ? 'idle' : p;
+    renderHome();
+  }
 
-    if (state.busy === 'connect') {
-        head.textContent = 'در حال اتصال…'; sub.textContent = 'هسته اجرا می‌شود؛ چند لحظه…'; power.disabled = true;
-    } else if (state.busy === 'disconnect') {
-        head.textContent = 'در حال قطع…'; sub.textContent = 'چند لحظه…'; power.disabled = true;
-    } else if (on) {
-        head.textContent = 'پروکسی فعال است';
-        sub.textContent = 'هسته و پروکسی محلی فعال‌اند. دسترسی واقعی به سایت را جداگانه بررسی کنید.';
-        power.disabled = !!state.busy;
-    } else if (m.coreReady === false) {
-        head.textContent = 'هسته Xray پیدا نشد';
-        sub.textContent = 'فایل‌های هسته را طبق راهنمای ساخت دریافت کنید، سپس برنامه را دوباره باز کنید.';
-        power.disabled = true;
-    } else if (!m.exists) {
-        head.textContent = 'آماده اتصال';
-        sub.textContent = 'اول گواهی را بسازید؛ بعد نصبش کنید.';
-        power.disabled = true;
-    } else if (!m.trusted) {
-        head.textContent = 'یک قدم مانده';
-        sub.textContent = 'گواهی ساخته شده ولی هنوز در ویندوز نصب نشده — بدون آن هر سایتی خطای گواهی می‌دهد.';
-        power.disabled = true;
+  $('orb').addEventListener('click', () => {
+    if (state.phase === 'idle') connect();
+    else if (state.phase === 'connected') disconnect();
+  });
+
+  B.onTraffic((t) => {
+    if (state.phase !== 'connected') return;
+    state.traffic = t;
+    state.dlHist.push(t.downSpeed); state.ulHist.push(t.upSpeed);
+    if (state.dlHist.length > 90) { state.dlHist.shift(); state.ulHist.shift(); }
+    renderLive();
+  });
+
+  // ---------- HOME render ----------
+  function renderHome() {
+    const p = state.phase, s = state.server, r = state.resolved;
+    const shown = (p === 'idle' || !r) ? s : r;
+    const orbText = { idle: 'CONNECT', connecting: 'CONNECTING…', connected: 'CONNECTED', disconnecting: 'DISCONNECTING…' }[p];
+    const orbSub = { idle: 'Tap to secure', connecting: 'Establishing tunnel', connected: 'Tap to disconnect', disconnecting: 'Closing tunnel' }[p];
+    $('orb-label').textContent = orbText;
+    $('orb-sub').textContent = orbSub;
+    $('orb').setAttribute('aria-label', orbText);
+    $('orb').setAttribute('aria-busy', String(p === 'connecting' || p === 'disconnecting'));
+
+    const dot = $('st-dot');
+    dot.className = 'dot' + (p === 'connected' ? ' ok' : p === 'idle' ? '' : ' busy');
+    $('st-text').textContent = { idle: 'Not protected', connecting: 'Connecting…', connected: 'Protected', disconnecting: 'Disconnecting…' }[p];
+    $('st-foot').textContent = p === 'connected'
+      ? (settings.killSwitch ? 'Encrypted · Kill Switch armed' : 'Encrypted tunnel active')
+      : p === 'idle' ? 'Your traffic is unencrypted' : 'Negotiating secure handshake';
+
+    $('srv-flag').src = FLAG(shown.cc);
+    $('srv-name').textContent = shown.smart ? 'Smart Location' : shown.country;
+    $('srv-foot').textContent = shown.smart ? 'Fastest server picked automatically'
+      : `${shown.city} · ${shown.latency} ms` + (s.smart && p !== 'idle' ? ' · smart' : '');
+
+    if (p === 'connected') {
+      $('ip-value').textContent = state.vpnIp || 'Resolving…';
+      $('ip-foot').textContent = 'Virtual location · ' + (r ? r.country : '');
     } else {
-        head.textContent = 'آماده اتصال';
-        sub.textContent = 'همه‌چیز آماده است — دکمه را بزنید.';
-        power.disabled = !!state.busy;
+      $('ip-value').textContent = state.realIp || '—';
+      $('ip-foot').textContent = state.realIp ? 'Your real IP is visible' : 'Unable to detect';
     }
 
-    const up = $('chip-uptime'), live = $('chip-live');
-    if (on) {
-        up.textContent = '⏱ ' + fmtUptime(state.engine.uptime || 0);
-        up.classList.remove('hidden');
-        live.classList.remove('hidden');
-    } else {
-        up.classList.add('hidden');
-        live.classList.add('hidden');
-    }
+    $('session-server').textContent = p === 'connected' || p === 'disconnecting' ? label(r) : (p === 'connecting' ? 'Routing to ' + r.country : '—');
+    $('session-proto').textContent = settings.protocol;
+    renderLive();
+  }
 
-    // setup steps
-    const mintDot = document.querySelector('#step-mint .step-dot');
-    const trustDot = document.querySelector('#step-trust .step-dot');
-    mintDot.dataset.state = m.exists ? 'done' : (state.busy === 'setup' ? 'active' : 'idle');
-    trustDot.dataset.state = m.trusted ? 'done' : (m.exists ? (state.busy === 'trust' ? 'active' : 'idle') : 'idle');
+  function renderLive() {
+    const on = state.phase === 'connected';
+    const t = on ? state.traffic : { downSpeed: 0, upSpeed: 0, down: 0, up: 0 };
+    const [dv, du] = speed(t.downSpeed), [uv, uu] = speed(t.upSpeed);
+    $('dl-value').textContent = dv; $('dl-unit').textContent = du;
+    $('ul-value').textContent = uv; $('ul-unit').textContent = uu;
+    $('data-total').textContent = fmtBytes(t.down + t.up);
+    $('data-down').textContent = '↓ ' + fmtBytes(t.down);
+    $('data-up').textContent = '↑ ' + fmtBytes(t.up);
+    $('dur-value').textContent = on ? clock(Date.now() - state.since) : '00:00:00';
+    window.MVCharts.line($('spark-dl'), [{ data: on ? state.dlHist : [], color: '255,69,0' }], { points: 40 });
+    window.MVCharts.line($('spark-ul'), [{ data: on ? state.ulHist : [], color: '255,224,224', glow: 4 }], { points: 40 });
+    if ($('screen-stats').classList.contains('active')) renderLiveChart();
+  }
+  setInterval(() => { if (state.phase === 'connected') $('dur-value').textContent = clock(Date.now() - state.since); }, 1000);
 
-    const pillSetup = $('pill-setup');
-    if (m.exists && m.trusted) { pillSetup.textContent = 'کامل شد'; pillSetup.className = 'pill ok'; }
-    else if (!m.exists) { pillSetup.textContent = '۱ از ۲'; pillSetup.className = 'pill warn'; }
-    else { pillSetup.textContent = '۲ از ۲'; pillSetup.className = 'pill warn'; }
+  $('info-server').addEventListener('click', () => go('servers'));
+  $('info-server').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('servers'); } });
 
-    // cert card
-    const pillCert = $('pill-cert');
-    if (m.exists && m.trusted) { pillCert.textContent = 'نصب شده'; pillCert.className = 'pill ok'; }
-    else if (m.exists) { pillCert.textContent = 'نصب نشده'; pillCert.className = 'pill err'; }
-    else { pillCert.textContent = 'ساخته نشده'; pillCert.className = 'pill'; }
-    $('cert-cn').textContent = m.cert ? m.cert.cn : '—';
-    $('cert-exp').textContent = m.cert ? new Date(m.cert.validTo).toLocaleDateString('fa-IR') : '—';
-    $('cert-sha').textContent = m.cert ? m.cert.sha256.slice(0, 47) + '…' : '—';
-    document.querySelector('[data-act="remove"]').disabled = !m.exists || on || !!state.busy;
-    document.querySelector('[data-act="setup"]').disabled = m.exists || m.coreReady === false || !!state.busy;
-    document.querySelector('[data-act="trust"]').disabled = !m.exists || m.trusted || !!state.busy;
-    document.querySelector('[data-act="openfile"]').disabled = !!state.busy;
+  // ---------- SERVERS ----------
+  function renderServers() {
+    const q = state.query.trim().toLowerCase();
+    let list = SERVERS.filter((s) => !q || (s.country + ' ' + s.city).toLowerCase().includes(q));
+    const rank = { online: 0, busy: 1, offline: 2 };
+    const cmp = {
+      recommended: (a, b) => (b.smart - a.smart) || (favs.includes(b.id) - favs.includes(a.id)) || (rank[a.status] - rank[b.status]) || ((a.latency + a.load) - (b.latency + b.load)),
+      latency: (a, b) => (rank[a.status] === 2) - (rank[b.status] === 2) || a.latency - b.latency,
+      name: (a, b) => (b.smart - a.smart) || a.country.localeCompare(b.country) || a.city.localeCompare(b.city),
+      load: (a, b) => (rank[a.status] === 2) - (rank[b.status] === 2) || a.load - b.load,
+    }[state.sort];
+    list = list.slice().sort(cmp);
+    $('srv-count').textContent = SERVERS.length - 1;
 
-    // traffic
-    const t = state.traffic || {};
-    if (on && state.traffic && Date.now() - state.lastPushAt < 5000) {
-        $('spd-down').innerHTML = fmtSpeed(t.downSpeed || 0);
-        $('spd-up').innerHTML = fmtSpeed(t.upSpeed || 0);
-        $('tot-down').textContent = 'مجموع: ' + fmtBytes(t.down || 0);
-        $('tot-up').textContent = 'مجموع: ' + fmtBytes(t.up || 0);
-        const pillT = $('pill-traffic');
-        pillT.textContent = 'زنده'; pillT.className = 'pill ok';
-    } else if (on) {
-        $('spd-down').textContent = '—';
-        $('spd-up').textContent = '—';
-        $('tot-down').textContent = 'آمار دریافت نشده';
-        $('tot-up').textContent = 'آمار دریافت نشده';
-        $('pill-traffic').textContent = 'نامشخص';
-        $('pill-traffic').className = 'pill warn';
-    } else {
-        $('spd-down').innerHTML = '۰ <small>KB/s</small>';
-        $('spd-up').innerHTML = '۰ <small>KB/s</small>';
-        $('tot-down').textContent = 'مجموع: ۰';
-        $('tot-up').textContent = 'مجموع: ۰';
-        const pillT = $('pill-traffic');
-        pillT.textContent = '—'; pillT.className = 'pill';
-    }
-}
-
-function renderLogs(lines) {
-    const box = $('log');
-    box.innerHTML = (lines || []).map((l) => {
-        const cls = /\[FATAL\]|Error|Failed/i.test(l) ? 'ln-err' : /✅/.test(l) ? 'ln-ok' : '';
-        return `<div class="${cls}">${l.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</div>`;
+    if (!list.length) { $('srv-list').innerHTML = '<div class="srv-empty">No locations match “' + esc(state.query) + '”.</div>'; return; }
+    $('srv-list').innerHTML = list.map((s, i) => {
+      const latCls = s.status === 'offline' ? 'bad' : s.latency < 70 ? 'good' : s.latency < 150 ? 'mid' : 'bad';
+      const availTxt = { online: 'Available', busy: 'High load', offline: 'Offline' }[s.status];
+      const availCls = { online: 'on', busy: 'busy', offline: 'off' }[s.status];
+      const sel = s.id === state.server.id;
+      const isFav = favs.includes(s.id);
+      return `<div class="srv-row${sel ? ' selected' : ''}${s.status === 'offline' ? ' offline' : ''}" role="option" aria-selected="${sel}" tabindex="0" data-id="${s.id}" style="animation-delay:${Math.min(i, 14) * 25}ms">
+        <div class="srv-loc"><img class="flag" src="${FLAG(s.cc)}" alt="" loading="lazy"><div><b>${esc(s.country)}</b><small>${esc(s.city)}</small></div></div>
+        <div class="srv-load">${s.smart ? '<span>Auto-balanced</span>' : `<div class="bar"><i style="width:${s.load}%"></i></div><span>${s.status === 'offline' ? '—' : s.load + '%'}</span>`}</div>
+        <div class="lat ${s.smart ? 'good' : latCls}"><span class="sig"><i></i><i></i><i></i></span>${s.smart ? 'Best' : s.status === 'offline' ? '—' : s.latency + ' ms'}</div>
+        <span class="avail ${availCls}">${availTxt}</span>
+        ${s.smart ? '<span></span>' : `<button class="fav${isFav ? ' on' : ''}" data-fav="${s.id}" aria-label="${isFav ? 'Remove from' : 'Add to'} favourites"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8L3.5 9.7l5.9-.9z" stroke-linejoin="round"/></svg></button>`}
+      </div>`;
     }).join('');
-    box.scrollTop = box.scrollHeight;
-}
+  }
 
-async function call(url, body) {
-    const opts = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined;
-    const res = await fetch(url, opts);
-    let data = {};
-    try { data = await res.json(); } catch (e) {}
-    if (!res.ok && !data.error) data.error = `پاسخ ${res.status} از برنامه`;
-    return data;
-}
+  function chooseServer(id) {
+    const s = SERVERS.find((x) => x.id === id);
+    if (!s) return;
+    if (s.status === 'offline') { toast(`${label(s)} is offline right now`, 'err'); return; }
+    const changed = s.id !== state.server.id;
+    state.server = s; store.set(K.server, s.id);
+    renderServers(); renderHome();
+    if (changed && state.phase === 'connected') {
+      toast('Switching to ' + label(s) + '…');
+      disconnect().then(() => setTimeout(connect, 300));
+    } else if (changed) toast('Selected ' + label(s));
+    setTimeout(() => go('home'), 260);
+  }
 
-async function refresh() {
-    try {
-        const [mitm, eng] = await Promise.all([
-            window.mahyar.mitmStatus(),
-            window.mahyar.engineState(),
-        ]);
-        state.mitm = mitm.error ? null : mitm.data;
-        state.engine = eng.error ? null : eng.data;
-        render();
-    } catch (e) { /* page loading */ }
-}
-
-async function act(kind, fn) {
-    if (state.busy) return;
-    setBusy(kind);
-    try {
-        const r = await fn();
-        if (r.error) {
-            if (kind === 'trust' || kind === 'setup') {
-                $('cert-error-detail').textContent = r.error;
-                $('cert-error').classList.remove('hidden');
-            }
-            if (r.code === 'CERT_NOT_TRUSTED') toast('گواهی نصب نیست — ابتدا نصب کنید.', true);
-            else if (r.code === 'BUSY') toast(r.error, true);
-            else toast('❌ ' + r.error, true);
-        } else {
-            if (kind === 'trust' || kind === 'setup') $('cert-error').classList.add('hidden');
-            if (kind === 'setup') toast('✅ گواهی ساخته شد');
-            else if (kind === 'trust') {
-                if (r.data && r.data.declined) toast('نصب تأیید نشد — هر وقت خواستید دوباره بزنید.');
-                else toast('✅ گواهی در ویندوز نصب شد');
-            }
-            else if (kind === 'remove') toast(r.data && r.data.removed ? 'گواهی حذف شد' : 'حذف گواهی کامل نشد', !(r.data && r.data.removed));
-        }
-        await refresh();
-    } catch (e) {
-        toast('❌ ' + e.message, true);
-    } finally {
-        clearBusy();
+  $('srv-list').addEventListener('click', (e) => {
+    const fav = e.target.closest('[data-fav]');
+    if (fav) {
+      e.stopPropagation();
+      const id = fav.dataset.fav;
+      favs = favs.includes(id) ? favs.filter((x) => x !== id) : favs.concat(id);
+      store.set(K.favs, favs); renderServers(); return;
     }
-}
+    const row = e.target.closest('.srv-row');
+    if (row) chooseServer(row.dataset.id);
+  });
+  $('srv-list').addEventListener('keydown', (e) => {
+    const row = e.target.closest('.srv-row');
+    if (row && (e.key === 'Enter' || e.key === ' ') && !e.target.closest('[data-fav]')) { e.preventDefault(); chooseServer(row.dataset.id); }
+  });
+  $('srv-search').addEventListener('input', (e) => { state.query = e.target.value; renderServers(); });
+  $('srv-sort').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    state.sort = b.dataset.sort;
+    $('srv-sort').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+    renderServers();
+  });
+  $('srv-ping').addEventListener('click', async () => {
+    const btn = $('srv-ping'); btn.disabled = true; btn.style.opacity = .6;
+    const res = await B.ping(SERVERS.filter((s) => !s.smart));
+    SERVERS.filter((s) => !s.smart).forEach((s, i) => { if (res[i] != null) s.latency = res[i]; });
+    btn.disabled = false; btn.style.opacity = '';
+    renderServers(); renderHome(); toast('Latency refreshed');
+  });
 
-async function connect() {
-    if (state.busy || !ready()) return;
-    state.traffic = null;
-    state.lastPushAt = 0;
-    setBusy('connect');
-    try {
-        const r = await window.mahyar.engineStart();
-        if (r.error) toast('❌ ' + r.error, true);
-        else toast('پروکسی محلی فعال شد');
-        const logs = await window.mahyar.engineLogs();
-        if (!logs.error) renderLogs(logs.data);
-        await refresh();
-    } catch (e) {
-        toast(e.message, true);
-    } finally {
-        clearBusy();
+  // ---------- STATS ----------
+  function renderLiveChart() {
+    const on = state.phase === 'connected';
+    const toUnit = (v) => settings.units === 'MB/s' ? v / 1048576 : v * 8 / 1e6;
+    window.MVCharts.line($('chart-live'), [
+      { data: on ? state.ulHist.map(toUnit) : [], color: '255,224,224', glow: 4, width: 1.4 },
+      { data: on ? state.dlHist.map(toUnit) : [], color: '255,69,0' },
+    ], { grid: true, points: 60, fmt: (v) => v.toFixed(v < 10 ? 1 : 0) + (settings.units === 'MB/s' ? '' : '') });
+  }
+
+  function renderStats() {
+    const all = history.concat(state.phase === 'connected'
+      ? [{ start: state.since, end: Date.now(), down: state.traffic.down, up: state.traffic.up }] : []);
+    const sum = (k) => all.reduce((a, s) => a + (s[k] || 0), 0);
+    $('k-down').textContent = fmtBytes(sum('down'));
+    $('k-up').textContent = fmtBytes(sum('up'));
+    $('k-sessions').textContent = history.length;
+    $('k-time').textContent = human(all.reduce((a, s) => a + (s.end - s.start), 0));
+
+    // last 7 days
+    const days = [];
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      days.push({ t: d.getTime(), label: d.toLocaleDateString('en-US', { weekday: 'short' }), a: 0, b: 0, today: i === 0 });
     }
-}
-
-async function disconnect() {
-    if (state.busy) return;
-    state.traffic = null;
-    state.lastPushAt = 0;
-    setBusy('disconnect');
-    try {
-        const r = await window.mahyar.engineStop();
-        if (r.error) toast(r.error, true);
-        await refresh();
-    } catch (e) { toast(e.message, true); }
-    finally { clearBusy(); }
-}
-
-// ── event listeners ────────────────────────────────────────────────────────────────────
-
-document.addEventListener('DOMContentLoaded', async () => {
-    await refresh();
-    setInterval(async () => {
-        const eng = await window.mahyar.engineState();
-        if (!eng.error) state.engine = eng.data;
-        if (state.engine && state.engine.running) {
-            const logs = await window.mahyar.engineLogs();
-            if (!logs.error) renderLogs(logs.data);
-        }
-        render();
-    }, 1500);
-
-    window.mahyar.onState((s) => { state.engine = s; render(); });
-    window.mahyar.onTraffic((t) => {
-        state.traffic = t;
-        state.lastPushAt = Date.now();
-        render();
+    all.forEach((s) => {
+      const d = new Date(s.start); d.setHours(0, 0, 0, 0);
+      const slot = days.find((x) => x.t === d.getTime());
+      if (slot) { slot.a += s.down || 0; slot.b += s.up || 0; }
     });
-});
-
-// power button
-$('btn-power').addEventListener('click', () => {
-    if (state.busy) return;
-    if (state.engine && state.engine.running) disconnect();
-    else connect();
-});
-
-// action buttons
-document.querySelectorAll('[data-act]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-        const kind = btn.dataset.act;
-        if (kind === 'setup') act('setup', () => window.mahyar.mitmSetup().then((r) => ({ ...r, declined: false })));
-        else if (kind === 'trust') act('trust', () => window.mahyar.mitmTrust());
-        else if (kind === 'remove' && window.confirm('گواهی محلی و کلید خصوصی حذف شوند؟ ابتدا اطمینان ویندوز به آن لغو می‌شود.')) act('remove', () => window.mahyar.mitmRemove());
-        else if (kind === 'openfile') act('openfile', () => window.mahyar.mitmOpenFolder());
+    $('week-total').textContent = fmtBytes(days.reduce((a, d) => a + d.a + d.b, 0)) + ' total';
+    window.MVCharts.bars($('chart-week'), days, (v) => {
+      if (v >= 1024 ** 3) return (v / 1024 ** 3).toFixed(1) + 'G';
+      if (v >= 1024 ** 2) return Math.round(v / 1024 ** 2) + 'M';
+      return Math.round(v / 1024) + 'K';
     });
-});
+    renderLiveChart();
 
-// log toggle
-$('btn-log-toggle').addEventListener('click', () => {
-    const log = $('log');
-    const btn = $('btn-log-toggle');
-    log.classList.toggle('hidden');
-    btn.textContent = log.classList.contains('hidden') ? 'نمایش' : 'پنهان';
-    btn.setAttribute('aria-expanded', String(!log.classList.contains('hidden')));
-});
-$('cert-error-close').addEventListener('click', () => $('cert-error').classList.add('hidden'));
+    $('hist').innerHTML = history.length ? history.slice(0, 50).map((h) => {
+      const s = SERVERS.find((x) => x.id === h.server) || { cc: 'un', country: h.server, city: '' };
+      const d = new Date(h.start);
+      return `<div class="hist-row"><img class="flag" src="${FLAG(s.cc)}" alt="">
+        <b>${esc(s.country)}${s.city ? ' · ' + esc(s.city) : ''}</b>
+        <span>${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+        <span>${clock(h.end - h.start)}</span><span>↓ ${fmtBytes(h.down)}</span><span>↑ ${fmtBytes(h.up)}</span></div>`;
+    }).join('') : '<div class="hist-empty">No sessions yet. Connect once and your history will appear here.</div>';
+  }
+  $('hist-clear').addEventListener('click', () => {
+    if (!history.length) return;
+    if (!window.confirm('Delete all connection history on this device?')) return;
+    history = []; store.set(K.history, history); renderStats(); toast('History cleared');
+  });
+  setInterval(() => { if ($('screen-stats').classList.contains('active') && state.phase === 'connected') renderStats(); }, 5000);
 
-// window chrome
-$('btn-min').addEventListener('click', () => window.mahyar.minimize());
-$('btn-max').addEventListener('click', () => window.mahyar.toggleMaximize());
-$('btn-hide').addEventListener('click', () => window.mahyar.hide());
+  // ---------- SETTINGS ----------
+  function applySettings() {
+    document.body.dataset.glow = settings.glow;
+    document.body.dataset.motion = settings.motion;
+    document.body.dataset.grain = settings.grain ? 'on' : 'off';
+    window.MVFx.setParticles(settings.particles && settings.motion !== 'off');
+    document.querySelectorAll('[data-set]').forEach((i) => { i.checked = !!settings[i.dataset.set]; });
+    document.querySelectorAll('[data-seg]').forEach((seg) => {
+      seg.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.val === settings[seg.dataset.seg]));
+    });
+  }
+  function saveSettings() { store.set(K.settings, settings); applySettings(); renderHome(); }
+  document.querySelectorAll('[data-set]').forEach((i) => i.addEventListener('change', () => {
+    settings[i.dataset.set] = i.checked; saveSettings();
+    if (i.dataset.set === 'sounds' && i.checked) tone(true);
+  }));
+  document.querySelectorAll('[data-seg]').forEach((seg) => seg.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    settings[seg.dataset.seg] = b.dataset.val; saveSettings();
+    if (seg.dataset.seg === 'protocol' && state.phase === 'connected') toast('Protocol will apply on next connection');
+  }));
+  $('set-reset').addEventListener('click', () => { Object.assign(settings, DEFAULTS); saveSettings(); toast('Defaults restored'); });
 
-// keyboard
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'F11' || (e.key === 'Enter' && e.altKey)) window.mahyar.toggleMaximize();
-    if (e.key === 'Escape') window.mahyar.hide();
-});
+  // ---------- window chrome & keyboard ----------
+  $('win-min').addEventListener('click', B.win.minimize);
+  $('win-max').addEventListener('click', B.win.maximize);
+  $('win-close').addEventListener('click', B.win.close);
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && /^[1-5]$/.test(e.key)) {
+      e.preventDefault(); go(['home', 'servers', 'stats', 'settings', 'about'][+e.key - 1]);
+    }
+    if (e.ctrlKey && e.key.toLowerCase() === 'k') { e.preventDefault(); go('servers'); setTimeout(() => $('srv-search').focus(), 300); }
+  });
+  window.addEventListener('resize', () => { renderLive(); if ($('screen-stats').classList.contains('active')) renderStats(); });
+
+  // ---------- boot ----------
+  const chip = $('mode-chip');
+  if (B.mode === 'native') { chip.textContent = 'ENGINE READY'; chip.classList.add('native'); $('about-engine').textContent = 'Xray-core (native)'; }
+  else chip.title = 'Browser preview: connections are simulated, no traffic is tunnelled.';
+
+  applySettings();
+  renderHome();
+  renderServers();
+  B.publicIp().then((ip) => { state.realIp = ip; renderHome(); });
+  if (settings.autoConnect) setTimeout(connect, 900);
+
+  // test hook for automated previews: ?state=connected|connecting  &screen=servers
+  const qs = new URLSearchParams(location.search);
+  const T = window.MV_TEST || {};
+  const wantScreen = qs.get('screen') || T.screen, wantState = qs.get('state') || T.state;
+  if (wantScreen) go(wantScreen);
+  if (wantState === 'connecting') { state.resolved = pickSmart(); setPhase('connecting'); }
+  if (wantState === 'connected') connect();
+})();

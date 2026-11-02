@@ -1,137 +1,321 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
-  <title>Mahyar VPN</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MAHYAR VPN</title>
+  <meta name="description" content="MAHYAR VPN — premium Windows VPN desktop client interface." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
-<body>
-  <div class="bg-orbs" aria-hidden="true">
-    <span class="orb orb-a"></span>
-    <span class="orb orb-b"></span>
-    <span class="orb orb-c"></span>
-    <div class="bg-grid"></div>
+<body data-motion="full" data-glow="vivid" data-grain="on">
+
+  <!-- ===== Atmosphere ===== -->
+  <div class="atmo" aria-hidden="true">
+    <div class="atmo-glow g1"></div>
+    <div class="atmo-glow g2"></div>
+    <div class="atmo-glow g3"></div>
+    <div class="atmo-horizon"></div>
+    <canvas id="embers"></canvas>
+    <div class="atmo-grain"></div>
+    <div class="atmo-vignette"></div>
   </div>
 
-  <!-- titlebar -->
-  <header class="titlebar" id="titlebar">
-    <div class="tb-brand">
-      <img src="icon.png" alt="" class="tb-logo" draggable="false" />
-      <span class="tb-name">Mahyar <b>VPN</b></span>
-      <span class="tb-tag">WINDOWS / X-RAY</span>
-    </div>
-    <div class="tb-actions">
-      <button class="tb-btn" id="btn-min" title="کمینه"><svg viewBox="0 0 10 10"><rect y="4.5" width="10" height="1" rx=".5"/></svg></button>
-      <button class="tb-btn" id="btn-max" title="بزرگ/کوچک"><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1" fill="none" stroke-width="1"/></svg></button>
-      <button class="tb-btn tb-close" id="btn-hide" title="به کنار ساعت"><svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg></button>
-    </div>
-  </header>
+  <div class="app" id="app">
 
-  <main class="layout">
-    <!-- hero -->
-    <section class="hero glass">
-      <div class="power-wrap">
-        <div class="ring r1"></div>
-        <div class="ring r2"></div>
-        <button id="btn-power" class="power" aria-label="اتصال / قطع">
-          <svg viewBox="0 0 24 24" class="pw-icon">
-            <path d="M12 3v8" stroke-linecap="round"/>
-            <path d="M6.3 6.5a8 8 0 1 0 11.4 0" stroke-linecap="round"/>
-          </svg>
-        </button>
+    <!-- ===== Window chrome / brand ===== -->
+    <header class="chrome" id="chrome">
+      <div class="chrome-left">
+        <svg class="chrome-logo" viewBox="0 0 32 32" aria-hidden="true">
+          <defs>
+            <linearGradient id="lg-logo" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#FF7A3D"/><stop offset=".55" stop-color="#FF4500"/><stop offset="1" stop-color="#E0200A"/>
+            </linearGradient>
+          </defs>
+          <path d="M16 2.5 27 7v8.4c0 6.6-4.6 11.9-11 14.1C9.6 27.3 5 22 5 15.4V7z" fill="none" stroke="url(#lg-logo)" stroke-width="1.8"/>
+          <path d="M10 21V11l6 6 6-6v10" fill="none" stroke="url(#lg-logo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="chrome-meta">v2.0.0</span>
+        <span class="mode-chip" id="mode-chip" title="Connection engine mode">DEMO MODE</span>
       </div>
-      <div class="hero-text">
-        <div class="eyebrow">MAHYAR VPN <span> / </span> CONTROL CENTER</div>
-        <h1 id="st-head">آماده اتصال</h1>
-        <p id="st-sub">اول گواهی را بسازید و نصب کنید؛ بعد دکمه را بزنید.</p>
-        <div class="hero-note"><span class="status-dot"></span> اتصال محلی، وضعیت واقعی وب‌سایت را تضمین نمی‌کند</div>
+
+      <h1 class="brand" id="brand" aria-label="MAHYAR VPN">
+        <span class="brand-main" data-text="MAHYAR">MAHYAR</span>
+        <span class="brand-sub" data-text="VPN">VPN</span>
+      </h1>
+
+      <div class="chrome-right">
+        <button class="win-btn" id="win-min" aria-label="Minimize"><svg viewBox="0 0 10 10"><rect y="4.5" width="10" height="1" rx=".5"/></svg></button>
+        <button class="win-btn" id="win-max" aria-label="Maximize"><svg viewBox="0 0 10 10"><rect x=".6" y=".6" width="8.8" height="8.8" rx="1.2" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>
+        <button class="win-btn win-close" id="win-close" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
       </div>
-      <div class="hero-meta">
-        <div class="meta-chip" id="chip-uptime" title="مدت اتصال">۰۰:۰۰</div>
-        <div class="meta-chip green hidden" id="chip-live">● متصل</div>
-      </div>
-    </section>
+    </header>
 
-    <div class="grid">
-      <!-- setup steps -->
-      <section class="card glass">
-        <div class="card-head">
-          <h2>راه‌اندازی</h2>
-          <span class="pill" id="pill-setup">در انتظار</span>
-        </div>
-        <div class="step" id="step-mint">
-          <span class="step-dot" data-state="idle">۱</span>
-          <div class="step-body">
-            <div class="step-title">ساخت گواهی محلی</div>
-            <div class="step-desc">یک کلید خصوصی محلی برای همین سیستم ساخته می‌شود.</div>
+    <!-- ===== Navigation ===== -->
+    <nav class="rail" aria-label="Main navigation">
+      <button class="rail-btn active" data-screen="home" aria-label="Dashboard" title="Dashboard  (Ctrl+1)">
+        <svg viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.6a8 8 0 1 0 11.4 0"/></svg>
+        <span>Connect</span>
+      </button>
+      <button class="rail-btn" data-screen="servers" aria-label="Servers" title="Servers  (Ctrl+2)">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z"/></svg>
+        <span>Servers</span>
+      </button>
+      <button class="rail-btn" data-screen="stats" aria-label="Statistics" title="Statistics  (Ctrl+3)">
+        <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        <span>Stats</span>
+      </button>
+      <button class="rail-btn" data-screen="settings" aria-label="Settings" title="Settings  (Ctrl+4)">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        <span>Settings</span>
+      </button>
+      <div class="rail-spacer"></div>
+      <button class="rail-btn" data-screen="about" aria-label="About" title="About  (Ctrl+5)">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg>
+        <span>About</span>
+      </button>
+    </nav>
+
+    <main class="stage" id="stage">
+
+      <!-- ================= HOME ================= -->
+      <section class="screen active" id="screen-home" data-screen="home" aria-label="Dashboard">
+        <div class="home-grid">
+
+          <!-- left column -->
+          <div class="side side-left">
+            <article class="info glass">
+              <div class="info-label">Status</div>
+              <div class="info-value status-line"><span class="dot" id="st-dot"></span><span id="st-text">Not protected</span></div>
+              <div class="info-foot" id="st-foot">Your traffic is unencrypted</div>
+            </article>
+            <article class="info glass clickable" id="info-server" tabindex="0" role="button" aria-label="Change server">
+              <div class="info-label">Server <span class="info-link">Change ›</span></div>
+              <div class="info-value server-line"><img class="flag" id="srv-flag" alt="" /><span id="srv-name">—</span></div>
+              <div class="info-foot" id="srv-foot">—</div>
+            </article>
+            <article class="info glass">
+              <div class="info-label">IP Address</div>
+              <div class="info-value mono" id="ip-value">—</div>
+              <div class="info-foot" id="ip-foot">Detecting…</div>
+            </article>
           </div>
-          <button class="btn sm" data-act="setup">ساخت</button>
-        </div>
-        <div class="step" id="step-trust">
-          <span class="step-dot" data-state="idle">۲</span>
-          <div class="step-body">
-            <div class="step-title">نصب گواهی در ویندوز</div>
-            <div class="step-desc">نصب CA به این کلید امکان بررسی ترافیک رمزگذاری‌شده را می‌دهد. فقط روی دستگاه مورد اعتماد ادامه دهید.</div>
+
+          <!-- center: the orb -->
+          <div class="center">
+            <div class="orb-stage" id="orb-stage" data-state="idle">
+              <div class="orb-halo"></div>
+              <div class="orb-wave w1"></div>
+              <div class="orb-wave w2"></div>
+              <div class="orb-wave w3"></div>
+              <div class="orb-ring ring-outer"></div>
+              <div class="orb-ring ring-ticks"></div>
+              <div class="orb-ring ring-dash"></div>
+              <div class="orb-ring ring-energy"></div>
+              <div class="orb-ring ring-energy2"></div>
+              <div class="orb-ring ring-inner"></div>
+              <button class="orb" id="orb" aria-live="polite" aria-label="Connect">
+                <span class="orb-gloss"></span>
+                <svg class="orb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v7.5"/><path d="M6.4 6.8a7.8 7.8 0 1 0 11.2 0"/></svg>
+                <span class="orb-label" id="orb-label">CONNECT</span>
+                <span class="orb-sub" id="orb-sub">Tap to secure</span>
+              </button>
+            </div>
+
+            <div class="session glass" id="session">
+              <div class="session-item">
+                <span class="session-k">Duration</span>
+                <span class="session-v mono" id="dur-value">00:00:00</span>
+              </div>
+              <div class="session-sep"></div>
+              <div class="session-item">
+                <span class="session-k">Connected to</span>
+                <span class="session-v" id="session-server">—</span>
+              </div>
+              <div class="session-sep"></div>
+              <div class="session-item">
+                <span class="session-k">Protocol</span>
+                <span class="session-v" id="session-proto">Auto</span>
+              </div>
+            </div>
           </div>
-          <button class="btn sm" data-act="trust">نصب</button>
+
+          <!-- right column -->
+          <div class="side side-right">
+            <article class="info glass">
+              <div class="info-label"><span class="arrow down">↓</span> Download</div>
+              <div class="info-value big"><span id="dl-value">0.0</span> <small id="dl-unit">Mbps</small></div>
+              <canvas class="spark" id="spark-dl" width="220" height="34" aria-hidden="true"></canvas>
+            </article>
+            <article class="info glass">
+              <div class="info-label"><span class="arrow up">↑</span> Upload</div>
+              <div class="info-value big"><span id="ul-value">0.0</span> <small id="ul-unit">Mbps</small></div>
+              <canvas class="spark" id="spark-ul" width="220" height="34" aria-hidden="true"></canvas>
+            </article>
+            <article class="info glass">
+              <div class="info-label">Data Transferred</div>
+              <div class="info-value big" id="data-total">0 B</div>
+              <div class="info-foot"><span id="data-down">↓ 0 B</span> &nbsp;·&nbsp; <span id="data-up">↑ 0 B</span></div>
+            </article>
+          </div>
         </div>
       </section>
 
-      <!-- cert info -->
-      <section class="card glass">
-        <div class="card-head">
-          <h2>گواهی</h2>
-          <span class="pill" id="pill-cert">—</span>
-        </div>
-        <div class="kv">
-          <span class="k">نام</span><span class="v" id="cert-cn">—</span>
-          <span class="k">اعتبار تا</span><span class="v" id="cert-exp">—</span>
-          <span class="k">اثر انگشت</span><span class="v mono" id="cert-sha">—</span>
-        </div>
-        <div class="row-btns">
-          <button class="btn sm danger-ghost" data-act="remove">حذف گواهی</button>
-          <button class="btn sm ghost" data-act="openfile">باز کردن پوشهٔ گواهی</button>
-        </div>
-      </section>
-
-      <!-- live traffic -->
-      <section class="card glass">
-        <div class="card-head">
-          <h2>ترافیک زنده</h2>
-          <span class="pill" id="pill-traffic">—</span>
-        </div>
-        <div class="traffic">
-          <div class="t-item">
-            <div class="t-label down"><svg viewBox="0 0 12 12"><path d="M6 1v7M3 5.5L6 8.5 9 5.5M2 10.5h8" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="1.4"/></svg> دانلود</div>
-            <div class="t-speed" id="spd-down">۰ <small>KB/s</small></div>
-            <div class="t-total" id="tot-down">مجموع: ۰</div>
+      <!-- ================= SERVERS ================= -->
+      <section class="screen" id="screen-servers" data-screen="servers" aria-label="Server selection">
+        <header class="screen-head">
+          <div>
+            <h2 class="screen-title">Server Locations</h2>
+            <p class="screen-sub"><span id="srv-count">0</span> locations · Pick the fastest route</p>
           </div>
-          <div class="t-item">
-            <div class="t-label up"><svg viewBox="0 0 12 12"><path d="M6 8.5v-7M3 5.5L6 2.5 9 5.5M2 10.5h8" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="1.4"/></svg> آپلود</div>
-            <div class="t-speed" id="spd-up">۰ <small>KB/s</small></div>
-            <div class="t-total" id="tot-up">مجموع: ۰</div>
+          <div class="toolbar">
+            <label class="search glass">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input id="srv-search" type="search" placeholder="Search country or city…" autocomplete="off" />
+            </label>
+            <div class="seg glass" id="srv-sort" role="tablist" aria-label="Sort servers">
+              <button class="active" data-sort="recommended">Recommended</button>
+              <button data-sort="latency">Latency</button>
+              <button data-sort="name">Name</button>
+              <button data-sort="load">Load</button>
+            </div>
+            <button class="btn ghost" id="srv-ping" title="Re-measure latency">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg> Ping
+            </button>
           </div>
+        </header>
+        <div class="srv-head">
+          <span>Location</span><span>Load</span><span>Latency</span><span>Status</span><span></span>
+        </div>
+        <div class="srv-list" id="srv-list" role="listbox" aria-label="Servers"></div>
+      </section>
+
+      <!-- ================= STATS ================= -->
+      <section class="screen" id="screen-stats" data-screen="stats" aria-label="Statistics">
+        <header class="screen-head">
+          <div>
+            <h2 class="screen-title">Statistics</h2>
+            <p class="screen-sub">Traffic, sessions and usage on this device</p>
+          </div>
+          <button class="btn ghost" id="hist-clear">Clear history</button>
+        </header>
+        <div class="kpis">
+          <article class="kpi glass"><span class="kpi-k">Total downloaded</span><span class="kpi-v" id="k-down">0 B</span></article>
+          <article class="kpi glass"><span class="kpi-k">Total uploaded</span><span class="kpi-v" id="k-up">0 B</span></article>
+          <article class="kpi glass"><span class="kpi-k">Sessions</span><span class="kpi-v" id="k-sessions">0</span></article>
+          <article class="kpi glass"><span class="kpi-k">Time protected</span><span class="kpi-v" id="k-time">0m</span></article>
+        </div>
+        <div class="stats-grid">
+          <article class="panel glass">
+            <div class="panel-head"><h3>Live activity</h3><span class="legend"><i class="lg-dl"></i>Download <i class="lg-ul"></i>Upload</span></div>
+            <div class="chart-box"><canvas id="chart-live"></canvas></div>
+          </article>
+          <article class="panel glass">
+            <div class="panel-head"><h3>Data usage · last 7 days</h3><span class="legend muted" id="week-total">0 B</span></div>
+            <div class="chart-box"><canvas id="chart-week"></canvas></div>
+          </article>
+          <article class="panel glass wide">
+            <div class="panel-head"><h3>Connection history</h3><span class="legend muted">Most recent first</span></div>
+            <div class="hist" id="hist"></div>
+          </article>
         </div>
       </section>
 
-      <!-- log -->
-      <section class="card glass wide">
-        <div class="card-head">
-          <h2>گزارش</h2>
-          <button class="btn sm ghost" id="btn-log-toggle">نمایش</button>
+      <!-- ================= SETTINGS ================= -->
+      <section class="screen" id="screen-settings" data-screen="settings" aria-label="Settings">
+        <header class="screen-head">
+          <div>
+            <h2 class="screen-title">Settings</h2>
+            <p class="screen-sub">Preferences are saved automatically on this device</p>
+          </div>
+          <button class="btn ghost" id="set-reset">Restore defaults</button>
+        </header>
+        <div class="settings-grid">
+          <article class="panel glass">
+            <div class="panel-head"><h3>Startup</h3></div>
+            <div class="opt"><div><b>Launch with Windows</b><small>Start MAHYAR VPN when you sign in</small></div><label class="sw"><input type="checkbox" data-set="launchOnStartup"><i></i></label></div>
+            <div class="opt"><div><b>Start minimized</b><small>Open quietly in the system tray</small></div><label class="sw"><input type="checkbox" data-set="startMinimized"><i></i></label></div>
+            <div class="opt"><div><b>Close to tray</b><small>Keep protection running when the window closes</small></div><label class="sw"><input type="checkbox" data-set="closeToTray"><i></i></label></div>
+          </article>
+
+          <article class="panel glass">
+            <div class="panel-head"><h3>Connection</h3></div>
+            <div class="opt"><div><b>Auto-connect</b><small>Connect to the last server on launch</small></div><label class="sw"><input type="checkbox" data-set="autoConnect"><i></i></label></div>
+            <div class="opt"><div><b>Kill Switch</b><small>Block internet if the tunnel drops unexpectedly</small></div><label class="sw"><input type="checkbox" data-set="killSwitch"><i></i></label></div>
+            <div class="opt"><div><b>Reconnect automatically</b><small>Retry when the network changes</small></div><label class="sw"><input type="checkbox" data-set="autoReconnect"><i></i></label></div>
+            <div class="opt col">
+              <div><b>Protocol</b><small>Auto picks the best option for your network</small></div>
+              <div class="seg glass" data-seg="protocol">
+                <button data-val="Auto">Auto</button><button data-val="WireGuard">WireGuard</button><button data-val="OpenVPN UDP">OpenVPN UDP</button><button data-val="OpenVPN TCP">OpenVPN TCP</button><button data-val="IKEv2">IKEv2</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel glass">
+            <div class="panel-head"><h3>Appearance</h3></div>
+            <div class="opt col">
+              <div><b>Neon intensity</b><small>Strength of the red-orange glow</small></div>
+              <div class="seg glass" data-seg="glow"><button data-val="vivid">Vivid</button><button data-val="soft">Soft</button></div>
+            </div>
+            <div class="opt col">
+              <div><b>Animations</b><small>Reduce motion for focus or battery life</small></div>
+              <div class="seg glass" data-seg="motion"><button data-val="full">Full</button><button data-val="reduced">Reduced</button><button data-val="off">Off</button></div>
+            </div>
+            <div class="opt"><div><b>Film grain</b><small>Subtle cinematic noise texture</small></div><label class="sw"><input type="checkbox" data-set="grain"><i></i></label></div>
+            <div class="opt"><div><b>Ember particles</b><small>Floating light in the background</small></div><label class="sw"><input type="checkbox" data-set="particles"><i></i></label></div>
+          </article>
+
+          <article class="panel glass">
+            <div class="panel-head"><h3>Application</h3></div>
+            <div class="opt"><div><b>Notifications</b><small>Show alerts when connection changes</small></div><label class="sw"><input type="checkbox" data-set="notifications"><i></i></label></div>
+            <div class="opt"><div><b>Connection sounds</b><small>Soft tones on connect and disconnect</small></div><label class="sw"><input type="checkbox" data-set="sounds"><i></i></label></div>
+            <div class="opt col">
+              <div><b>Speed units</b><small>How throughput is displayed</small></div>
+              <div class="seg glass" data-seg="units"><button data-val="Mbps">Mbps</button><button data-val="MB/s">MB/s</button></div>
+            </div>
+          </article>
         </div>
-        <div class="log hidden" id="log" dir="ltr"></div>
       </section>
-    </div>
 
-    <footer class="foot">
-      <span>فقط برنامه‌هایی که از پروکسی ویندوز پیروی می‌کنند. دسترسی به سرویس‌ها به شبکه بستگی دارد.</span>
-      <span class="credit">MITM-DomainFronting <b dir="ltr">@patterniha</b> / Xray</span>
-    </footer>
-  </main>
+      <!-- ================= ABOUT ================= -->
+      <section class="screen" id="screen-about" data-screen="about" aria-label="About">
+        <div class="about">
+          <div class="about-mark">
+            <svg viewBox="0 0 32 32" aria-hidden="true">
+              <path d="M16 2.5 27 7v8.4c0 6.6-4.6 11.9-11 14.1C9.6 27.3 5 22 5 15.4V7z" fill="none" stroke="url(#lg-logo)" stroke-width="1.2"/>
+              <path d="M10 21V11l6 6 6-6v10" fill="none" stroke="url(#lg-logo)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <h2 class="about-brand">MAHYAR <span>VPN</span></h2>
+          <p class="about-tag">Private by design. Brilliant by nature.</p>
+          <div class="about-cards">
+            <article class="panel glass">
+              <div class="kv"><span>Version</span><b>2.0.0</b></div>
+              <div class="kv"><span>Build</span><b class="mono">2026.11 · x64</b></div>
+              <div class="kv"><span>Platform</span><b>Windows 10 / 11</b></div>
+              <div class="kv"><span>Engine</span><b id="about-engine">Demo simulation</b></div>
+            </article>
+            <article class="panel glass">
+              <div class="kv"><span>Support</span><a href="https://github.com/cuetellll/lastttttdominfronting/issues" target="_blank" rel="noopener">Report an issue ›</a></div>
+              <div class="kv"><span>Source</span><a href="https://github.com/cuetellll/lastttttdominfronting" target="_blank" rel="noopener">GitHub repository ›</a></div>
+              <div class="kv"><span>License</span><b>MPL-2.0</b></div>
+              <div class="kv"><span>Core</span><b>Xray-core · Project X</b></div>
+            </article>
+          </div>
+          <p class="about-foot">© 2026 MAHYAR VPN. Crafted with red-orange light on deep black.</p>
+        </div>
+      </section>
+    </main>
+  </div>
 
-  <div class="toast hidden" id="toast" role="status"></div>
-  <script src="app.js"></script>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/bridge.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/fx.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>
