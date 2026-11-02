@@ -8,66 +8,189 @@
   <link rel="stylesheet" href="neon.css">
 </head>
 <body>
-  <div class="ambient" aria-hidden="true"><div class="ambient-a"></div><div class="ambient-b"></div><div class="ambient-grid"></div></div>
+
+  <!-- ═══ فضای متحرک پس‌زمینه ═══ -->
+  <div class="ambient" aria-hidden="true">
+    <div class="nebula nebula-1"></div>
+    <div class="nebula nebula-2"></div>
+    <div class="nebula nebula-3"></div>
+    <div class="starfield">
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+    <div class="holo-grid"></div>
+    <div class="scanline"></div>
+  </div>
+
+  <!-- ═══ نوار عنوان ═══ -->
   <header class="titlebar">
     <div class="brand">
-      <img src="icon.png" alt="" draggable="false">
-      <div class="brand-copy"><strong dir="ltr">MAHYAR<span>VPN</span></strong><small>پنل اتصال</small></div>
-      <span class="brand-tag" dir="ltr">X-RAY / WINDOWS</span>
+      <div class="brand-logo">
+        <span class="logo-ring" aria-hidden="true"></span>
+        <span class="logo-ring ring-b" aria-hidden="true"></span>
+        <img src="icon.png" alt="" draggable="false">
+      </div>
+      <div class="brand-copy">
+        <strong dir="ltr">MAHYAR <em>VPN</em></strong>
+        <small>اتصال کوانتومی · پنل حرفه‌ای</small>
+      </div>
+      <span class="brand-tag" dir="ltr"><span class="tag-dot"></span> QUANTUM CORE</span>
     </div>
     <div class="window-actions" dir="ltr">
-      <button id="btn-min" class="window-btn" title="کمینه‌سازی" aria-label="کمینه‌سازی"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
-      <button id="btn-max" class="window-btn" title="بزرگ یا کوچک کردن پنجره" aria-label="بزرگ یا کوچک کردن پنجره"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg></button>
-      <button id="btn-hide" class="window-btn close" title="انتقال به کنار ساعت" aria-label="انتقال به کنار ساعت"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      <button id="btn-min" class="window-btn" title="کمینه‌سازی" aria-label="کمینه‌سازی"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+      <button id="btn-max" class="window-btn" title="بزرگ یا کوچک کردن پنجره" aria-label="بزرگ یا کوچک کردن پنجره"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg></button>
+      <button id="btn-hide" class="window-btn close" title="انتقال به کنار ساعت" aria-label="انتقال به کنار ساعت"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     </div>
   </header>
+
   <main class="workspace">
+    <!-- ═══ سربرگ و تیکر متحرک ═══ -->
     <section class="intro">
-      <div><div class="overline"><span></span> YOUR CONNECTION SPACE</div><h1>اینترنت، <em>به سبک تو.</em></h1><p>همه‌چیز برای کنترل اتصال، یک‌جا.</p></div>
-      <div class="intro-meta" dir="ltr"><span class="meta-pulse"></span> MAHYAR VPN <b>●</b> DOMAIN FRONTING</div>
+      <div class="intro-copy">
+        <div class="overline" dir="ltr"><span></span> MAHYAR QUANTUM NETWORK</div>
+        <h1>اینترنت، <em>به سبک تو.</em></h1>
+        <p>قدرت اتصال در یک نگاه — سریع، امن، شفاف.</p>
+      </div>
+      <div class="intro-ticker" dir="ltr" aria-hidden="true">
+        <div class="ticker-track">
+          <span>◆ MAHYAR VPN</span><span>◆ DOMAIN FRONTING</span><span>◆ X-RAY CORE</span><span>◆ ZERO LOG</span>
+          <span>◆ MAHYAR VPN</span><span>◆ DOMAIN FRONTING</span><span>◆ X-RAY CORE</span><span>◆ ZERO LOG</span>
+        </div>
+      </div>
     </section>
+
     <div class="dashboard">
+      <!-- ═══ قلب اتصال ═══ -->
       <section class="hero glass" aria-labelledby="st-head">
-        <div class="hero-top"><div class="section-kicker" dir="ltr"><span>✦</span> CONNECTION</div><div class="hero-meta"><div class="meta-chip hidden" id="chip-uptime"></div><div class="meta-chip green hidden" id="chip-live">● پروکسی فعال</div></div></div>
+        <div class="hero-top">
+          <div class="section-kicker" dir="ltr"><span>✦</span> CONNECTION</div>
+          <div class="hero-meta">
+            <div class="meta-chip hidden" id="chip-uptime"></div>
+            <div class="meta-chip green hidden" id="chip-live"><span class="pulse-dot"></span> پروکسی فعال</div>
+          </div>
+        </div>
         <div class="hero-core">
           <div class="power-wrap">
             <div class="orbital orbital-outer" aria-hidden="true"></div>
             <div class="orbital orbital-mid" aria-hidden="true"></div>
             <div class="orbital orbital-inner" aria-hidden="true"></div>
-            <div class="spark spark-one" aria-hidden="true"></div><div class="spark spark-two" aria-hidden="true"></div>
+            <div class="spark spark-one" aria-hidden="true"></div>
+            <div class="spark spark-two" aria-hidden="true"></div>
+            <div class="spark spark-three" aria-hidden="true"></div>
             <button id="btn-power" class="power" aria-label="اتصال یا قطع اتصال">
               <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4v11M9 8.8a11 11 0 1 0 14 0"/></svg>
             </button>
           </div>
-          <div class="hero-text"><div class="status-label"><span class="status-dot"></span> وضعیت اتصال</div><h2 id="st-head">آماده اتصال</h2><p id="st-sub">اول گواهی را بسازید؛ بعد نصبش کنید.</p></div>
+          <div class="hero-text">
+            <div class="status-label"><span class="status-dot"></span> وضعیت اتصال</div>
+            <h2 id="st-head">آماده اتصال</h2>
+            <p id="st-sub">اول گواهی را بسازید؛ بعد نصبش کنید.</p>
+          </div>
         </div>
-        <div class="hero-bottom"><span class="hero-rule"></span><span>فعال بودن پروکسی، دسترسی به سایت‌ها را تضمین نمی‌کند.</span></div>
+        <div class="hero-bottom">
+          <span class="hero-rule"></span>
+          <span>فعال بودن پروکسی، دسترسی به سایت‌ها را تضمین نمی‌کند.</span>
+        </div>
       </section>
+
+      <!-- ═══ ستون کناری ═══ -->
       <div class="side-stack">
         <section class="card glass setup-card" aria-labelledby="setup-heading">
-          <div class="card-head"><div><div class="section-kicker" dir="ltr">GET STARTED <span>✦</span></div><h2 id="setup-heading">راه‌اندازی</h2></div><span class="pill" id="pill-setup">در انتظار</span></div>
-          <div class="step" id="step-mint"><span class="step-dot" data-state="idle">۱</span><div class="step-body"><div class="step-title">ساخت گواهی محلی</div><div class="step-desc">یک کلید خصوصی برای همین دستگاه.</div></div><button class="btn sm" data-act="setup">ساخت</button></div>
-          <div class="step" id="step-trust"><span class="step-dot" data-state="idle">۲</span><div class="step-body"><div class="step-title">نصب گواهی در ویندوز</div><div class="step-desc">فقط روی دستگاه مورد اعتماد نصب کنید.</div></div><button class="btn sm" data-act="trust">نصب</button></div>
+          <div class="card-head">
+            <div>
+              <div class="section-kicker" dir="ltr">GET STARTED <span>✦</span></div>
+              <h2 id="setup-heading">راه‌اندازی</h2>
+            </div>
+            <span class="pill" id="pill-setup">در انتظار</span>
+          </div>
+          <div class="step" id="step-mint">
+            <span class="step-dot" data-state="idle">۱</span>
+            <div class="step-body">
+              <div class="step-title">ساخت گواهی محلی</div>
+              <div class="step-desc">یک کلید خصوصی برای همین دستگاه ساخته می‌شود.</div>
+            </div>
+            <button class="btn sm" data-act="setup">ساخت</button>
+          </div>
+          <div class="step" id="step-trust">
+            <span class="step-dot" data-state="idle">۲</span>
+            <div class="step-body">
+              <div class="step-title">نصب گواهی در ویندوز</div>
+              <div class="step-desc">نصب CA فقط روی دستگاه مورد اعتماد انجام شود.</div>
+            </div>
+            <button class="btn sm" data-act="trust">نصب</button>
+          </div>
           <p class="security-note"><span>!</span> اعتماد به CA اجازه بررسی ترافیک رمزگذاری‌شده را به صاحب کلید می‌دهد.</p>
-          <div class="cert-error hidden" id="cert-error" role="alert"><strong>نصب گواهی کامل نشد</strong><pre id="cert-error-detail"></pre><button class="btn sm ghost" id="cert-error-close">بستن جزئیات</button></div>
+          <div class="cert-error hidden" id="cert-error" role="alert">
+            <strong>نصب گواهی کامل نشد</strong>
+            <pre id="cert-error-detail"></pre>
+            <button class="btn sm ghost" id="cert-error-close">بستن جزئیات</button>
+          </div>
         </section>
+
         <section class="card glass traffic-card" aria-labelledby="traffic-heading">
-          <div class="card-head compact"><div><div class="section-kicker" dir="ltr">LIVE TRAFFIC <span>✦</span></div><h2 id="traffic-heading">ترافیک</h2></div><span class="pill" id="pill-traffic">—</span></div>
-          <div class="traffic"><div class="t-item"><div class="t-label down"><span class="arrow">↓</span> دانلود</div><div class="t-speed" id="spd-down">۰ <small>KB/s</small></div><div class="t-total" id="tot-down">مجموع: ۰</div></div><div class="t-item"><div class="t-label up"><span class="arrow">↑</span> آپلود</div><div class="t-speed" id="spd-up">۰ <small>KB/s</small></div><div class="t-total" id="tot-up">مجموع: ۰</div></div></div>
+          <div class="card-head compact">
+            <div>
+              <div class="section-kicker" dir="ltr">LIVE TRAFFIC <span>✦</span></div>
+              <h2 id="traffic-heading">ترافیک زنده</h2>
+            </div>
+            <span class="pill" id="pill-traffic">—</span>
+          </div>
+          <div class="traffic">
+            <div class="t-item">
+              <div class="t-label down"><span class="arrow">↓</span> دانلود</div>
+              <div class="t-speed" id="spd-down">۰ <small>KB/s</small></div>
+              <div class="t-total" id="tot-down">مجموع: ۰</div>
+              <div class="t-wave" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+            </div>
+            <div class="t-item">
+              <div class="t-label up"><span class="arrow">↑</span> آپلود</div>
+              <div class="t-speed" id="spd-up">۰ <small>KB/s</small></div>
+              <div class="t-total" id="tot-up">مجموع: ۰</div>
+              <div class="t-wave" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+            </div>
+          </div>
         </section>
       </div>
+
+      <!-- ═══ گواهی دستگاه ═══ -->
       <section class="card glass cert-card" aria-labelledby="cert-heading">
-        <div class="card-head compact"><div><div class="section-kicker" dir="ltr">LOCAL IDENTITY <span>✦</span></div><h2 id="cert-heading">گواهی دستگاه</h2></div><span class="pill" id="pill-cert">—</span></div>
-        <div class="kv"><span class="k">نام</span><span class="v" id="cert-cn">—</span><span class="k">اعتبار تا</span><span class="v" id="cert-exp">—</span><span class="k">اثر انگشت</span><span class="v mono" id="cert-sha">—</span></div>
-        <div class="row-btns"><button class="btn sm danger-ghost" data-act="remove">حذف گواهی</button><button class="btn sm ghost" data-act="openfile">پوشهٔ گواهی</button></div>
+        <div class="card-head compact">
+          <div>
+            <div class="section-kicker" dir="ltr">LOCAL IDENTITY <span>✦</span></div>
+            <h2 id="cert-heading">گواهی دستگاه</h2>
+          </div>
+          <span class="pill" id="pill-cert">—</span>
+        </div>
+        <div class="kv">
+          <span class="k">نام</span><span class="v" id="cert-cn">—</span>
+          <span class="k">اعتبار تا</span><span class="v" id="cert-exp">—</span>
+          <span class="k">اثر انگشت</span><span class="v mono" id="cert-sha">—</span>
+        </div>
+        <div class="row-btns">
+          <button class="btn sm danger-ghost" data-act="remove">حذف گواهی</button>
+          <button class="btn sm ghost" data-act="openfile">پوشهٔ گواهی</button>
+        </div>
       </section>
+
+      <!-- ═══ گزارش سیستم ═══ -->
       <section class="card glass log-card" aria-labelledby="log-heading">
-        <div class="card-head compact"><div><div class="section-kicker" dir="ltr">SYSTEM LOG <span>✦</span></div><h2 id="log-heading">گزارش سیستم</h2></div><button class="btn sm ghost" id="btn-log-toggle" aria-expanded="false" aria-controls="log">نمایش</button></div>
-        <p class="log-caption">جزئیات هسته و خطاها را اینجا ببین.</p><div class="log hidden" id="log" dir="ltr"></div>
+        <div class="card-head compact">
+          <div>
+            <div class="section-kicker" dir="ltr">SYSTEM LOG <span>✦</span></div>
+            <h2 id="log-heading">گزارش سیستم</h2>
+          </div>
+          <button class="btn sm ghost" id="btn-log-toggle" aria-expanded="false" aria-controls="log">نمایش</button>
+        </div>
+        <p class="log-caption">جزئیات هسته و خطاها را اینجا ببین.</p>
+        <div class="log hidden" id="log" dir="ltr"></div>
       </section>
     </div>
-    <footer class="foot"><span>فقط برنامه‌هایی که از پروکسی ویندوز استفاده می‌کنند.</span><span dir="ltr">MITM-DOMAINFRONTING / @PATTERNIHA</span></footer>
+
+    <footer class="foot">
+      <span>فقط برنامه‌هایی که از پروکسی ویندوز استفاده می‌کنند.</span>
+      <span dir="ltr">MAHYAR VPN ◆ MITM-DOMAINFRONTING / @PATTERNIHA</span>
+    </footer>
   </main>
+
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>
 </body>
