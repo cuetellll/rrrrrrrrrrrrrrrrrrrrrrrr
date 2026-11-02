@@ -1,0 +1,69 @@
+name: Mahyar VPN Windows build
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Download and verify official Xray
+        shell: pwsh
+        run: ./scripts/download-xray.ps1
+      - name: Check Xray runs
+        shell: pwsh
+        run: |
+          & ./resources/core/xray.exe version
+          if ($LASTEXITCODE -ne 0) { throw "Xray could not run" }
+      - name: Test source
+        run: node --test
+      - name: Validate the real Xray profile and geodata
+        run: node scripts/smoke-xray.js
+      - name: Install dependencies
+        run: npm install --no-package-lock
+      - name: Build Windows installer and portable ZIP
+        run: npm run dist
+      - name: Verify both distributables exist
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -File -Filter '*.exe' | Select-Object -First 1
+          $zip = Get-ChildItem dist -File -Filter '*.zip' | Select-Object -First 1
+          if (-not $exe) { throw "Installer (.exe) was not produced" }
+          if (-not $zip) { throw "Portable archive (.zip) was not produced" }
+          $exe | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content -Encoding ascii dist/SHA256SUMS.exe.txt
+          $zip | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content -Encoding ascii dist/SHA256SUMS.zip.txt
+
+      # ── Setup (نصبی) — آرتیفکت کاملاً جداگانه ──
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mahyar-VPN-Setup-x64
+          path: |
+            dist/*.exe
+            dist/SHA256SUMS.exe.txt
+          if-no-files-found: error
+
+      # ── Portable (بدون نصب) — آرتیفکت کاملاً جداگانه ──
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mahyar-VPN-Portable-x64
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.zip.txt
+          if-no-files-found: error
+
+      # ── انتشار فایل‌های خام (بدون زیپ اضافه) روی GitHub Releases ──
+      - name: Publish raw files to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$env:GITHUB_REF_NAME" --title "Mahyar VPN $env:GITHUB_REF_NAME" --generate-notes `
+            (Get-ChildItem dist -File | Where-Object { $_.Name -match '\.(exe|zip)$' } | ForEach-Object FullName) `
+            dist/SHA256SUMS.exe.txt dist/SHA256SUMS.zip.txt
